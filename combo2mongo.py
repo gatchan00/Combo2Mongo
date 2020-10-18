@@ -95,7 +95,7 @@ def bucleMongo(mongoCollection, processedFiles):
 #MAIN
 if __name__ == "__main__":
     mongoCollection = createMongoConnection()
-    mongoCollection.drop()
+    #mongoCollection.drop()
 
     processedFiles = [checkpointFile]
     try:
