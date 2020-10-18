@@ -5,18 +5,15 @@ import tokenize
 
 from pymongo import MongoClient, UpdateOne
 
-from combo2mongo_cfg import mongoConfig
+from combo2mongo_cfg import mongoConfig, rootPath, checkpointFile, batchSize, storeSource
 
-#CONFIG
-rootPath = 'G:\\bigDB'
-checkpointFile = 'G:\\bigDB\\save.txt'
-batchSize = 50000
+
 
 patternLineaAsString = "[^\r\n:@a-zA-Z0-9.-_]*([^\r\n:]+):([^\r\n:]+).*"
 mailPatternAsString = "([^\r\n:]+@[^\r\n:]+)"
-patternValidTextAsString = "[a-zA-Z0-9.\-,@|# ;ñÑáéíóúÁÉÍÓÚÄËÏÖÜäëïöü?¿¡!]"
+patternValidTextAsString = "[a-zA-Z0-9.\\/<>+*=&%$\-,@|# ;ñÑáéíóúÁÉÍÓÚÄËÏÖÜäëïöü?¿¡!]"
 
-
+pendingFiles = []
 #PROCESS
 patternLinea = re.compile(patternLineaAsString)
 patternMail = re.compile(mailPatternAsString)
@@ -27,7 +24,7 @@ def createMongoConnection():
     mongoCollection = db[mongoConfig['collection']]
     return mongoCollection
 
-def procesaFichero(filePath, mongoCollection, processedFiles):
+def procesaFichero(filePath):
     print(filePath)
     tempFile = tokenize.open(filePath)
     fileEncoding = tempFile.encoding
@@ -50,9 +47,12 @@ def procesaFichero(filePath, mongoCollection, processedFiles):
                             camposFinales.remove(campo)
                     #print({'_id': userId}, {'$addToSet': {'pass': campos}})
                     #mongoCollection.update_one({'_id': userId}, {'$addToSet': {'pass': userPass}}, upsert=True)
-                    yield UpdateOne({'_id': userId}, {'$addToSet': {'data': {'$each':camposFinales}}}, upsert=True)
+                    yield UpdateOne({'_id': userId}, {'$addToSet': {'data': {'$each': camposFinales}}}, upsert=True)
+                    if storeSource:
+                        yield UpdateOne({'_id': userId}, {'$addToSet': {'sources': filePath}}, upsert=True)
+
             except:
-                print("PETO "+linea)
+                print("ERROR IN LINE: "+linea)
                 continue
 
 def processPath(path, mongoCollection, processedFiles):
@@ -64,40 +64,46 @@ def processPath(path, mongoCollection, processedFiles):
                 yield e
         elif os.path.isfile(fullPath):
             if fullPath not in processedFiles:
-                for e in procesaFichero(fullPath, mongoCollection, processedFiles):
+                for e in procesaFichero(fullPath):
                     yield e
-                with open(checkpointFile, 'a') as saveCheckpointFile:
-                    saveCheckpointFile.write(fullPath)
-                    saveCheckpointFile.write("\n")
+                pendingFiles.append(fullPath)
             else:
                 print("File <"+fullPath+"> skipped (already processes on another run)")
 
 def bucleMongo(mongoCollection, processedFiles):
-    #processPath(rootPath, mongoCollection)
-    #procesaFichero('G:\\bigDB\\VIP Collection\\1.txt', mongoCollection)
     mongoOperations = []
     totalOperations = 0
     for operation in processPath(rootPath, mongoCollection, processedFiles):
         mongoOperations.append(operation)
         totalOperations += 1
         if totalOperations % batchSize == 0:
-            print("Hemos acabado con "+str(totalOperations))
+            if storeSource:
+                print("Hemos acabado con " + str(totalOperations/2))
+            else:
+                print("Hemos acabado con "+str(totalOperations))
             mongoCollection.bulk_write(mongoOperations)
+            with open(checkpointFile, 'a') as saveCheckpointFile:
+                for processedFile in pendingFiles:
+                    saveCheckpointFile.write(processedFile)
+                    saveCheckpointFile.write("\n")
+                saveCheckpointFile.flush()
+                pendingFiles.clear()
             mongoOperations = []
     mongoCollection.bulk_write(mongoOperations)
     mongoOperations = []
+
 #MAIN
 if __name__ == "__main__":
     mongoCollection = createMongoConnection()
     mongoCollection.drop()
 
+    processedFiles = [checkpointFile]
     try:
-        processedFiles = [checkpointFile]
         with open(checkpointFile, 'r') as f:
             for linea in f:
                 linea = linea.replace("\r", "").replace("\n", "")
                 processedFiles.append(linea)
     except:
-        print("No existe fichero de checkpoints <"+checkpointFile+">, se generará nuevo")
+        print("no checkpoints file <"+checkpointFile+">, a new one will be generated")
     bucleMongo(mongoCollection, processedFiles)
 
