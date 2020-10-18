@@ -4,6 +4,8 @@ Process a folders with combos and store them in **MongoDB**.
 ## Basic How-To
 Just modify the ```combo2mongo_cfg.py``` to use your own configuration.
 
+To run, just launch ```combo2mongo.py```.
+
 ## What's **Mongo2Combo** purpouse?
 It takes any ```combo file```, search for an email, and store it as the key of a MongoDB document. The other fields are stored too, as the value.
 If no mail is found, then the first field will be stored as the key of the document.
