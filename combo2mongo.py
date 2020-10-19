@@ -77,11 +77,11 @@ def bucleMongo(mongoCollection, processedFiles):
         mongoOperations.append(operation)
         totalOperations += 1
         if totalOperations % batchSize == 0:
-            if storeSource:
-                print("Hemos acabado con " + str(totalOperations/2))
-            else:
-                print("Hemos acabado con "+str(totalOperations))
             mongoCollection.bulk_write(mongoOperations)
+            if storeSource:
+                print("Total proccessed " + str(totalOperations/2))
+            else:
+                print("Total proccessed "+str(totalOperations))
             with open(checkpointFile, 'a') as saveCheckpointFile:
                 for processedFile in pendingFiles:
                     saveCheckpointFile.write(processedFile)
